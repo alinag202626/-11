@@ -1,0 +1,129 @@
+
+import tkinter as tk
+from tkinter import ttk, messagebox
+import requests
+import json
+import os
+
+class GitHubUserFinder:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("GitHub User Finder")
+        
+        # Избранные пользователи
+        self.favorites = []
+        self.load_favorites()
+        
+        self.create_widgets()
+    
+    def create_widgets(self):
+        # Поле поиска
+        search_frame = ttk.LabelFrame(self.root, text="Поиск пользователя GitHub")
+        search_frame.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
+        
+        ttk.Label(search_frame, text="Имя пользователя:").grid(row=0, column=0, padx=5, pady=5)
+        self.search_entry = ttk.Entry(search_frame, width=30)
+        self.search_entry.grid(row=0, column=1, padx=5, pady=5)
+        
+        ttk.Button(search_frame, text="Найти", command=self.search_user).grid(row=0, column=2, padx=5, pady=5)
+        
+        # Результаты поиска
+        results_frame = ttk.LabelFrame(self.root, text="Результаты поиска")
+        results_frame.grid(row=1, column=0, padx=10, pady=10, sticky="ew")
+        
+        columns = ("Имя", "Публичные репозитории", "Местоположение", "Компания")
+        self.tree = ttk.Treeview(results_frame, columns=columns, show="headings", height=10)
+        for col in columns:
+            self.tree.heading(col, text=col)
+            self.tree.column(col, width=150)
+        self.tree.grid(row=0, column=0)
+        
+        # Кнопка добавления в избранное
+        ttk.Button(results_frame, text="Добавить в избранное",
+                   command=self.add_to_favorites).grid(row=1, column=0, pady=5)
+Шаг 2. Функция поиска пользователя через GitHub API
+python
+    def search_user(self):
+        username = self.search_entry.get().strip()
+        
+        # Проверка на пустоту
+        if not username:
+            messagebox.showerror("Ошибка", "Поле поиска не должно быть пустым")
+            return
+        
+        try:
+            # Запрос к GitHub API
+            url = f"https://api.github.com/users/{username}"
+            response = requests.get(url)
+            
+            if response.status_code == 200:
+                user_data = response.json()
+                self.display_user(user_data)
+            elif response.status_code == 404:
+                messagebox.showerror("Ошибка", f"Пользователь '{username}' не найден")
+            else:
+                messagebox.showerror("Ошибка", f"Ошибка API: {response.status_code}")
+        except requests.exceptions.RequestException as e:
+            messagebox.showerror("Ошибка сети", f"Не удалось подключиться к GitHub: {e}")
+    
+    def display_user(self, user_data):
+        # Очистка таблицы
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+        
+        # Добавление данных пользователя
+        self.tree.insert("", "end", values=(
+            user_data.get("login", "N/A"),
+            user_data.get("public_repos", 0),
+            user_data.get("location", "N/A"),
+            user_data.get("company", "N/A")
+        ))
+Шаг 3. Добавление в избранное и сохранение в JSON
+python
+    def add_to_favorites(self):
+        selection = self.tree.selection()
+        if not selection:
+            messagebox.showwarning("Предупреждение", "Выберите пользователя из списка")
+            return
+        
+        item = selection[0]
+        values = self.tree.item(item, "values")
+        
+        favorite_user = {
+            "username": values[0],
+            "public_repos": values[1],
+            "location": values[2],
+            "company": values[3]
+        }
+        
+        # Проверка, не добавлен ли уже
+        if any(f["username"] == favorite_user["username"] for f in self.favorites):
+            messagebox.showinfo("Информация", "Пользователь уже в избранном")
+            return
+        
+        self.favorites.append(favorite_user)
+        self.save_favorites()
+        messagebox.showinfo("Успех", f"Пользователь {values[0]} добавлен в избранное")
+    
+    def save_favorites(self):
+        with open("favorites.json", "w", encoding="utf-8") as f:
+            json.dump(self.favorites, f, ensure_ascii=False, indent=2)
+    
+    def load_favorites(self):
+        if os.path.exists("favorites.json"):
+            try:
+                with open("favorites.json", "r", encoding="utf-8") as f:
+                    self.favorites = json.load(f)
+            except (json.JSONDecodeError, IOError):
+                self.favorites = []
+        else:
+            self.favorites = []
+Шаг 4. Запуск приложения
+python
+def main():
+    root = tk.Tk()
+    app = GitHubUserFinder(root)
+    root.mainloop()
+
+if __name__ == "__main__":
+    main()
